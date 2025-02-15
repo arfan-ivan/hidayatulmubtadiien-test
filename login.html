@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+
+    <!-- Instagram Embed Script -->
+    <script async src="https://www.instagram.com/embed.js"></script>
+
+    <!-- Facebook SDK -->
+    <script async defer crossorigin="anonymous" 
+        src="https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v15.0" nonce="vBfGKuwL"></script>
+</head>
+<body>
+    <div class="container mt-5" id="loginForm">
+        <h2>Login</h2>
+        <form>
+            <div class="form-group">
+                <label for="email">Email address</label>
+                <input type="email" class="form-control" id="email" placeholder="Enter email">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" class="form-control" id="password" placeholder="Password">
+            </div>
+            <button id="loginBtn" class="btn btn-primary">Login</button>
+        </form>
+    </div>
+
+    <div class="container mt-5" id="postForm" style="display: none;">
+        <h2>Admin Post Management</h2>
+        <button id="logoutBtn" class="btn btn-danger mb-3">Logout</button>
+        <a href="index.html" class="btn btn-success mb-3">Kembali ke Halaman Utama</a>
+        <form>
+            <div class="form-group">
+                <label for="postURL">Post URL</label>
+                <input type="url" class="form-control" id="postURL" placeholder="Enter Instagram, Facebook, or YouTube URL">
+            </div>
+            <div class="form-group">
+                <label for="postDescription">Post Description (optional)</label>
+                <input type="text" class="form-control" id="postDescription" placeholder="Add a description or title">
+            </div>
+            <button type="submit" class="btn btn-success">Add Post</button>
+        </form>
+
+        <div class="row mt-5" id="postsContainer"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-auth.js";
+        import { getDatabase, ref, set, get, child, remove } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB11hwqAOGU7o3VHjcIZ3uAre1E5xZ0ZsI",
+            authDomain: "hidayatulmubtadien-ab09b.firebaseapp.com",
+            databaseURL: "https://hidayatulmubtadien-ab09b-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "hidayatulmubtadien-ab09b",
+            storageBucket: "hidayatulmubtadien-ab09b.firebasestorage.app",
+            messagingSenderId: "138212482070",
+            appId: "1:138212482070:web:f9a24b03a99f5dcab9a937"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const loginForm = document.getElementById("loginForm");
+            const postForm = document.getElementById("postForm");
+            const postsContainer = document.getElementById("postsContainer");
+
+            const emailInput = document.getElementById("email");
+            const passwordInput = document.getElementById("password");
+            const loginBtn = document.getElementById("loginBtn");
+            const logoutBtn = document.getElementById("logoutBtn");
+
+            let savedPosts = [];
+
+            const showLogin = () => {
+                loginForm.style.display = "block";
+                postForm.style.display = "none";
+                postsContainer.style.display = "none";
+            };
+
+            const showFeed = () => {
+                loginForm.style.display = "none";
+                postForm.style.display = "block";
+                postsContainer.style.display = "flex";
+            };
+
+            loginBtn.addEventListener("click", async (e) => {
+                e.preventDefault();
+                const email = emailInput.value;
+                const password = passwordInput.value;
+
+                try {
+                    await signInWithEmailAndPassword(auth, email, password);
+                    showFeed();
+                    initialize();
+                } catch (error) {
+                    alert("Login failed: " + error.message);
+                }
+            });
+
+            logoutBtn.addEventListener("click", async () => {
+                try {
+                    await signOut(auth);
+                    showLogin();
+                } catch (error) {
+                    console.error("Error logging out:", error);
+                }
+            });
+
+            async function fetchPostsFromFirebase() {
+                try {
+                    const snapshot = await get(child(ref(db), "posts"));
+                    if (snapshot.exists()) {
+                        savedPosts = Object.values(snapshot.val());
+                    } else {
+                        savedPosts = [];
+                    }
+                    renderPosts();
+                } catch (error) {
+                    console.error("Error fetching posts from Firebase:", error);
+                }
+            }
+
+            function savePostsToFirebase() {
+                set(ref(db, "posts"), savedPosts)
+                    .catch((error) => console.error("Error saving posts to Firebase:", error));
+            }
+
+            function renderPosts() {
+                postsContainer.innerHTML = "";
+
+                // Sort posts based on timestamp (latest first)
+                const sortedPosts = [...savedPosts].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                sortedPosts.forEach(({ url, type, description, timestamp }, index) => {
+                    let embedHTML = "";
+                    let descriptionHTML = description ? `<p>${description}</p>` : "";
+
+                    if (type === "instagram") {
+                        embedHTML = `<blockquote class="instagram-media" data-instgrm-permalink="${url}" data-instgrm-version="14"></blockquote>`;
+                    } else if (type === "facebook") {
+                        embedHTML = `<div class="fb-post" data-href="${url}" data-width="auto"></div>`;
+                    } else if (type === "youtube") {
+                        const youtubeEmbedURL = url.replace("watch?v=", "embed/").replace("youtu.be/", "www.youtube.com/embed/");
+                        embedHTML = `<iframe width="100%" height="315" src="${youtubeEmbedURL}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+                    }
+
+                    const postHTML = `
+                        <div class="col-md-4 mb-4" data-index="${index}">
+                            <div class="card">
+                                ${embedHTML}
+                                <div class="card-body text-center">
+                                    ${descriptionHTML}
+                                    <button class="btn btn-danger btn-sm delete-btn">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    postsContainer.innerHTML += postHTML;
+                });
+
+                // Process embeds
+                window.instgrm.Embeds.process(); // Instagram
+                FB.XFBML.parse(); // Facebook
+            }
+
+            postsContainer.addEventListener("click", async (e) => {
+                if (e.target.classList.contains("delete-btn")) {
+                    const postElement = e.target.closest("[data-index]");
+                    const postIndex = parseInt(postElement.getAttribute("data-index"));
+
+                    // Remove from savedPosts array
+                    savedPosts.splice(postIndex, 1);
+                    await savePostsToFirebase(); // Save updated posts to Firebase
+                    renderPosts(); // Re-render posts
+                }
+            });
+
+            postForm.addEventListener("submit", (e) => {
+                e.preventDefault();
+                const postURL = document.getElementById("postURL").value.trim();
+                const postDescription = document.getElementById("postDescription").value.trim();
+
+                if (postURL === "") {
+                    alert("Post URL cannot be empty.");
+                    return;
+                }
+
+                let postType = "";
+                if (/instagram\.com/.test(postURL)) {
+                    postType = "instagram";
+                } else if (/facebook\.com/.test(postURL)) {
+                    postType = "facebook";
+                } else if (/youtube\.com|youtu\.be/.test(postURL)) {
+                    postType = "youtube";
+                } else {
+                    alert("Unsupported URL format. Please use Instagram, Facebook, or YouTube links.");
+                    return;
+                }
+
+                const timestamp = new Date().toISOString(); // Add timestamp for sorting
+                savedPosts.push({ url: postURL, type: postType, description: postDescription, timestamp });
+                savePostsToFirebase();
+                renderPosts();
+                document.getElementById("postURL").value = ""; // Clear input
+                document.getElementById("postDescription").value = ""; // Clear description
+            });
+
+            async function initialize() {
+                await fetchPostsFromFirebase();
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    showFeed();
+                    initialize();
+                } else {
+                    showLogin();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
